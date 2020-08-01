@@ -4,10 +4,11 @@ from django.db import IntegrityError
 from django.db.models import Avg
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, status, viewsets, mixins
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import (AllowAny, IsAuthenticated,
+                                        IsAuthenticatedOrReadOnly)
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -15,14 +16,17 @@ from .filters import TitlesFilter
 from .mixins import PermissionMixin
 from .models import Category, Comment, Genre, Review, Title, User
 from .permissions import IsAdminOrSuperUser, ReviewCommentPermissions
-from .serializers import (CategorySerializer, CommentSerializer, ConfirmationCodeSerializer,
-                          GenreSerializer, ReviewSerializer, TitleCreateSerializer,
-                          TitleListSerializer, UserEmailSerializer, UserSerializer)
+from .serializers import (CategorySerializer, CommentSerializer,
+                          ConfirmationCodeSerializer, GenreSerializer,
+                          ReviewSerializer, TitleCreateSerializer,
+                          TitleListSerializer, UserEmailSerializer,
+                          UserSerializer)
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def get_confirmation_code(request):
+    '''API для отправки кода подтверждения на почту'''
     username = request.data.get('username')
     serializer = UserEmailSerializer(data=request.data)
 
@@ -34,7 +38,8 @@ def get_confirmation_code(request):
         try:
             User.objects.create_user(username=username, email=email)
         except IntegrityError:
-            return Response({'Error': 'Пользователь с таким username/email уже существует'},
+            return Response({
+                'Error': 'Пользователь с таким username/email уже существует'},
                             status=status.HTTP_400_BAD_REQUEST)
 
     user = get_object_or_404(User, email=email)
@@ -42,14 +47,17 @@ def get_confirmation_code(request):
     mail_subject = 'Код подтверждения'
     message = f'Ваш код подтверждения: {confirmation_code}'
 
-    send_mail(mail_subject, message, 'Yamdb.ru <admin@yamdb.ru>', [email], fail_silently=False)
-    return Response({'Success': f'На почту {email} был выслан код подтверждения'},
+    send_mail(mail_subject, message, 'Yamdb.ru <admin@yamdb.ru>',
+              [email], fail_silently=False)
+    return Response({
+        'Success': f'На почту {email} был выслан код подтверждения'},
                     status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def get_jwt_token(request):
+    '''API для получения jwt-токена'''
     serializer = ConfirmationCodeSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -60,21 +68,26 @@ def get_jwt_token(request):
 
     if default_token_generator.check_token(user, confirmation_code):
         refresh = RefreshToken.for_user(user)
-        return Response({'access': str(refresh.access_token)}, status=status.HTTP_200_OK)
+        return Response({
+            'access': str(refresh.access_token)}, status=status.HTTP_200_OK)
 
     return Response({'confirmation_code': 'Неверный код подтверждения'},
                     status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserViewSet(viewsets.ModelViewSet):
+    '''API для модели пользователя'''
     queryset = User.objects.all()
     serializer_class = UserSerializer
     pagination_class = PageNumberPagination
     permission_classes = [IsAdminOrSuperUser]
     lookup_field = 'username'
 
-    @action(detail=False, methods=['get', 'patch'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['get', 'patch'],
+            permission_classes=[IsAuthenticated])
     def me(self, request):
+        '''API для получения и редактирования
+        текущим пользователем своих данных'''
         user = request.user
         if request.method == 'GET':
             serializer = self.get_serializer(user)
@@ -89,6 +102,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class ReviewViewSet(viewsets.ModelViewSet):
+    '''API для модели отзывов'''
     serializer_class = ReviewSerializer
     pagination_class = PageNumberPagination
     permission_classes = [ReviewCommentPermissions, IsAuthenticatedOrReadOnly]
@@ -103,6 +117,7 @@ class ReviewViewSet(viewsets.ModelViewSet):
 
 
 class CommentViewSet(viewsets.ModelViewSet):
+    '''API для модели комментариев к отзывам'''
     serializer_class = CommentSerializer
     pagination_class = PageNumberPagination
     permission_classes = [ReviewCommentPermissions, IsAuthenticatedOrReadOnly]
@@ -116,12 +131,13 @@ class CommentViewSet(viewsets.ModelViewSet):
         return Comment.objects.filter(review=review)
 
 
-class CDLViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.DestroyModelMixin,
-                 viewsets.GenericViewSet):
+class CDLViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
+                 mixins.DestroyModelMixin, viewsets.GenericViewSet):
     pass
 
 
 class CategoryViewSet(PermissionMixin, CDLViewSet):
+    '''API для модели категорий (типов)'''
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     pagination_class = PageNumberPagination
@@ -131,6 +147,7 @@ class CategoryViewSet(PermissionMixin, CDLViewSet):
 
 
 class GenreViewSet(PermissionMixin, CDLViewSet):
+    '''API для модели жанров'''
     queryset = Genre.objects.all()
     serializer_class = GenreSerializer
     filter_backends = [filters.SearchFilter]
@@ -139,6 +156,7 @@ class GenreViewSet(PermissionMixin, CDLViewSet):
 
 
 class TitleViewSet(PermissionMixin, viewsets.ModelViewSet):
+    '''API для модели произведений'''
     queryset = Title.objects.annotate(rating=Avg('reviews__score'))
     pagination_class = PageNumberPagination
     filter_backends = [DjangoFilterBackend]
